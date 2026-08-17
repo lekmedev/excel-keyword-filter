@@ -1,0 +1,17 @@
+# ============================================================================
+# Excel Keyword Filter — docker-compose
+# Chạy:   docker compose up -d
+# Truy cập: http://localhost:8000
+# ============================================================================
+
+services:
+  excel-filter:
+    build: .
+    container_name: excel-keyword-filter
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    # File tạm chỉ nằm trong container, không mount volume ra ngoài
+    # -> dữ liệu người dùng tự động biến mất khi container bị xóa.
+    environment:
+      - TZ=Asia/Ho_Chi_Minh

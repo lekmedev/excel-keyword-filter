@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="vi" data-bs-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Excel Keyword Filter — Lọc file Excel theo từ khóa</title>
+
+  <!-- Bootstrap 5 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+  <div class="container py-5" style="max-width: 860px;">
+
+    <!-- Header -->
+    <header class="text-center mb-4">
+      <h1 class="fw-bold">Excel Keyword Filter</h1>
+      <p class="text-secondary mb-0">Upload file <code>.xlsx</code>, nhập từ khóa (mỗi từ 1 dòng) — hệ thống lọc các dòng chứa từ khóa ở <strong>cột N</strong> và trả về file <code>TRUE_Result.xlsx</code>.</p>
+    </header>
+
+    <!-- Card chính -->
+    <div class="card shadow-sm">
+      <div class="card-body p-4">
+
+        <!-- Khu vực kéo thả file -->
+        <div id="dropZone" class="drop-zone text-center" tabindex="0" role="button" aria-label="Upload file Excel">
+          <input type="file" id="fileInput" accept=".csv,text/csv" hidden>
+          <div class="py-4">
+            <div class="fs-2">📄</div>
+            <p class="mb-1 fw-semibold" id="dropText">Kéo thả file Excel vào đây, hoặc <span class="text-primary text-decoration-underline">chọn file</span></p>
+            <p class="text-secondary small mb-0">Chỉ chấp nhận <code>.csv</code> — tối đa 50 MB</p>
+          </div>
+        </div>
+
+        <!-- File đã chọn -->
+        <div id="fileInfo" class="alert alert-light border d-none align-items-center mt-3 mb-0" style="display:none;">
+          <span class="me-2">📎</span>
+          <span id="fileName" class="text-truncate flex-grow-1"></span>
+          <button type="button" class="btn-close" id="clearFileBtn" aria-label="Bỏ chọn file"></button>
+        </div>
+
+        <!-- Ô nhập từ khóa -->
+        <div class="mt-4">
+          <label for="keywords" class="form-label fw-semibold">Keywords <span class="text-danger">*</span></label>
+          <textarea id="keywords" class="form-control" rows="5" placeholder="Mỗi từ khóa nằm trên một dòng. Ví dụ:&#10;banphim&#10;bàn phím&#10;keyboard" required></textarea>
+        </div>
+
+        <!-- Nút xử lý -->
+        <div class="mt-4 d-grid">
+          <button id="processBtn" class="btn btn-primary btn-lg" type="button" disabled>
+            <span id="btnSpinner" class="spinner-border spinner-border-sm d-none me-2" aria-hidden="true"></span>
+            <span id="btnText">Process Excel</span>
+          </button>
+        </div>
+
+        <!-- Kết quả / lỗi -->
+        <div id="resultBox" class="mt-4 d-none"></div>
+
+      </div>
+    </div>
+
+    <footer class="text-center text-secondary small mt-4">
+      File tạm được tự động xóa sau khi tải xong — dữ liệu của bạn không bị lưu lại.
+    </footer>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="/script.js"></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+/* Bỏ qua các file không cần thiết khi build Docker — image gọn hơn */
+.git
+.gitignore
+.env
+venv
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+tests
+README.md

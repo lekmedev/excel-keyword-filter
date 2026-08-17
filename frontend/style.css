@@ -1,0 +1,33 @@
+/* Excel Keyword Filter — styles bổ sung cho giao diện upload */
+
+.drop-zone {
+  border: 2px dashed #adb5bd;
+  border-radius: 0.75rem;
+  background-color: #f8f9fa;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.drop-zone:hover,
+.drop-zone:focus-visible {
+  border-color: #0d6efd;
+  background-color: #eef4ff;
+  outline: none;
+}
+
+.drop-zone.dragging {
+  border-color: #0d6efd;
+  background-color: #dbe9ff;
+}
+
+/* Khu vực kết quả */
+#resultBox {
+  border-radius: 0.5rem;
+}
+
+/* Code / ký tự nhấn mạnh trong alert */
+.alert code {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 0.15rem 0.35rem;
+  border-radius: 0.25rem;
+}
