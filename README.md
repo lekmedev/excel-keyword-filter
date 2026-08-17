@@ -1,15 +1,30 @@
 # Excel Keyword Filter
 
-Webapp thay thế macro Excel VBA: upload file `.xlsx`, nhập danh sách từ khóa,
-hệ thống lọc các dòng trong sheet **active** có cột **N** chứa bất kỳ từ khóa nào,
-rồi trả về file `TRUE_Result.xlsx` đã làm sạch theo đúng logic macro gốc.
+Webapp lọc file CSV theo từ khóa: upload file `.csv`, nhập danh sách từ khóa,
+hệ thống lọc các dòng có cột **N** (cột 14) chứa bất kỳ từ khóa nào,
+rồi trả về file `TRUE_Result.xlsx` đã làm sạch theo logic macro VBA gốc.
+
+## Share cho người khác — chạy 1 lệnh Docker
+
+Image đã public trên **Docker Hub**: `thn05/excel-keyword-filter:latest`
+
+Người nhận chỉ cần cài Docker rồi chạy:
+
+```bash
+docker run -d -p 8000:8000 --name excel-keyword-filter --restart unless-stopped thn05/excel-keyword-filter:latest
+```
+
+Mở trình duyệt: **http://localhost:8000**
+
+Các tag: `latest`, `v1.1.0`
+Trang Docker Hub: https://hub.docker.com/r/thn05/excel-keyword-filter
 
 ## Tính năng
 
 - Upload bằng **kéo thả** hoặc chọn file (`<input type="file">`)
-- Hỗ trợ **`.xlsx` và `.csv`** (CSV auto-detect encoding UTF-8/cp1252 + delimiter `,` `;` tab; file CSV tải lên trả về kết quả dạng `.xlsx`)
-- Validate: chỉ nhận `.xlsx` / `.csv`, giới hạn **50 MB** (frontend + backend)
-- Xử lý theo sheet **active** của file tải lên; mỗi keyword 1 dòng, khớp không phân biệt hoa thường
+- Hỗ trợ **`.csv`** (auto-detect encoding UTF-8/cp1252 + delimiter `,` `;` tab)
+- Validate: chỉ nhận `.csv`, giới hạn **50 MB** (frontend + backend)
+- Xử lý toàn bộ dữ liệu (coi cột 14 = cột N là cột keyword); mỗi keyword 1 dòng, khớp không phân biệt hoa thường
 - Kết quả:
   - Sheet mới **TRUE_Result**, copy header + các dòng khớp (giá trị + format cơ bản)
   - **Xóa các cột A, B, G, H, I, K, L, M**
@@ -125,7 +140,7 @@ download xong thì file tạm bị xóa (404 khi tải lại), file Excel hỏng
 
 | Method | Path          | Mô tả |
 |--------|---------------|-------|
-| POST   | `/process`    | `multipart/form-data`: `file` (Excel `.xlsx` hoặc `.csv`) + `keywords` (text, mỗi keyword 1 dòng) → JSON `{status, message, match_count, download_url}` |
+| POST   | `/process`    | `multipart/form-data`: `file` (CSV `.csv`) + `keywords` (text, mỗi keyword 1 dòng) → JSON `{status, message, match_count, download_url}` |
 | GET    | `/download/{job_id}` | Tải `TRUE_Result.xlsx`; **file tạm bị xóa ngay sau khi tải** |
 | GET    | `/health`     | Liveness check |
 
