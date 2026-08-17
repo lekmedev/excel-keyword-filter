@@ -4,6 +4,9 @@ Webapp lọc file CSV theo từ khóa: upload file `.csv`, nhập danh sách t�
 hệ thống lọc các dòng có cột **N** (cột 14) chứa bất kỳ từ khóa nào,
 rồi trả về file `TRUE_Result.xlsx` đã làm sạch theo logic macro VBA gốc.
 
+**Source:** https://github.com/lekmedev/excel-keyword-filter  
+**Docker Hub:** https://hub.docker.com/r/thn05/excel-keyword-filter
+
 ## Share cho người khác — chạy 1 lệnh Docker
 
 Image đã public trên **Docker Hub**: `thn05/excel-keyword-filter:latest`
