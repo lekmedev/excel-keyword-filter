@@ -426,3 +426,85 @@ def test_smoke_docker_build():
         )
     except (subprocess.CalledProcessError, FileNotFoundError) as exc:
         pytest.skip(f"Docker không khả dụng: {exc}")
+
+
+# ---------------------------------------------------------------------------
+# Stats tests
+# ---------------------------------------------------------------------------
+
+def test_stats_record_and_read(tmp_path: Path):
+    """Ghi + đọc record đơn giản."""
+    from backend.stats import Stats
+
+    s = Stats(tmp_path / "stats", retention_days=90)
+    s.record(ip="1.2.3.4", method="GET", path="/", status=200, ua="curl")
+    recs = s.read()
+    assert len(recs) == 1
+    assert recs[0]["ip"] == "1.2.3.4"
+    assert recs[0]["method"] == "GET"
+    assert recs[0]["path"] == "/"
+    assert recs[0]["status"] == 200
+
+
+def test_stats_cleanup(tmp_path: Path):
+    """Dọn log cũ hơn retention_days; giữ log mới."""
+    from backend.stats import Stats
+
+    s = Stats(tmp_path / "stats", retention_days=90)
+    # Ghi 2 dòng: 1 dòng cũ (100 ngày trước), 1 dòng mới.
+    import json as _json
+    from datetime import datetime, timedelta as _td
+
+    now = datetime.now()
+    old_ts = (now - _td(days=100)).isoformat(timespec="seconds")
+    new_ts = (now - _td(days=1)).isoformat(timespec="seconds")
+    with s.log_path.open("a", encoding="utf-8") as f:
+        f.write(_json.dumps({"ts": old_ts, "ip": "old", "method": "GET", "path": "/", "status": 200}) + "\n")
+        f.write(_json.dumps({"ts": new_ts, "ip": "new", "method": "GET", "path": "/", "status": 200}) + "\n")
+    s.cleanup()
+    recs = s.read()
+    assert len(recs) == 1
+    assert recs[0]["ip"] == "new"
+
+
+def test_stats_middleware_logs_access(client, tmp_path: Path, monkeypatch):
+    """Middleware ghi log khi truy cập /; /stats không bị log; IP từ CF-Connecting-IP."""
+    from backend import main as main_mod
+    from pathlib import Path as P
+
+    log_dir = tmp_path / "stats"
+    test_stats = __import__("backend.stats", fromlist=["Stats"]).Stats(log_dir, retention_days=90)
+    monkeypatch.setattr(main_mod, "stats", test_stats)
+    monkeypatch.setattr(main_mod, "STATS_DIR", log_dir)
+
+    # GET / với header CF giả
+    r = client.get("/", headers={"CF-Connecting-IP": "9.9.9.9"})
+    assert r.status_code == 200
+
+    recs = test_stats.read()
+    assert len(recs) >= 1
+    assert recs[0]["ip"] == "9.9.9.9"
+    assert recs[0]["path"] == "/"
+
+    # /stats không bị log
+    client.get("/stats")
+    recs2 = test_stats.read()
+    assert all(r["path"] != "/stats" for r in recs2)
+
+
+def test_stats_endpoint_renders(client, tmp_path: Path, monkeypatch):
+    """GET /stats trả HTML có số liệu."""
+    from backend import main as main_mod
+    from backend.stats import Stats
+
+    log_dir = tmp_path / "stats2"
+    test_stats = Stats(log_dir, retention_days=90)
+    test_stats.record(ip="1.1.1.1", method="POST", path="/process", status=200)
+    test_stats.record(ip="1.1.1.1", method="GET", path="/", status=200)
+    monkeypatch.setattr(main_mod, "stats", test_stats)
+
+    r = client.get("/stats")
+    assert r.status_code == 200
+    assert "Tổng requests" in r.text
+    assert "2" in r.text
+    assert "1.1.1.1" in r.text

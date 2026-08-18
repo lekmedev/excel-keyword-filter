@@ -1,0 +1,147 @@
+"""Thống kê truy cập webapp (access log JSONL).
+
+Ghi mỗi request quan trọng 1 dòng JSON vào file access.log:
+    {"ts": iso, "ip": "...", "method": "GET", "path": "/", "status": 200, "ua": "..."}
+
+Giữ dữ liệu tối đa STATS_RETENTION_DAYS (mặc định 90 ngày) — tự dọn khi ghi.
+Không chứa dữ liệu file upload, không chứa nội dung CSV.
+"""
+
+import json
+import os
+from datetime import datetime, timedelta
+from pathlib import Path
+
+
+class Stats:
+    """Quản lý access log dạng JSONL + tổng hợp nhanh."""
+
+    def __init__(self, log_dir: Path, retention_days: int = 90, filename: str = "access.log"):
+        self.log_dir = Path(log_dir)
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        self.log_path = self.log_dir / filename
+        self.retention_days = retention_days
+
+    # ------------------------------------------------------------------
+    def record(
+        self,
+        ip: str,
+        method: str,
+        path: str,
+        status: int,
+        ua: str = "",
+        extra: dict | None = None,
+    ) -> None:
+        """Ghi 1 dòng log. Dọn log cũ sau khi ghi (thỉnh thoảng)."""
+        entry = {
+            "ts": datetime.now().isoformat(timespec="seconds"),
+            "ip": ip or "",
+            "method": method,
+            "path": path.split("?")[0],  # không lưu query string
+            "status": status,
+            "ua": (ua or "")[:200],
+        }
+        if extra:
+            entry.update(extra)
+        try:
+            with self.log_path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except OSError:
+            pass  # không làm chết request nếu không ghi được log
+
+        # Dọn log cũ (mỗi lần ghi — đủ nhẹ vì chỉ quét 1 file).
+        self.cleanup()
+
+    # ------------------------------------------------------------------
+    def _iter_records(self):
+        """Đọc từng dòng JSON hợp lệ trong file log."""
+        if not self.log_path.exists():
+            return
+        with self.log_path.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    yield json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+    # ------------------------------------------------------------------
+    def read(self) -> list[dict]:
+        return list(self._iter_records())
+
+    # ------------------------------------------------------------------
+    def cleanup(self) -> None:
+        """Xóa dòng log cũ hơn retention_days (ghi lại file nếu cần)."""
+        if not self.log_path.exists():
+            return
+        cutoff = datetime.now() - timedelta(days=self.retention_days)
+        lines = self.log_path.read_text(encoding="utf-8").splitlines()
+        keep = []
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+                ts = datetime.fromisoformat(entry.get("ts", ""))
+            except (json.JSONDecodeError, ValueError):
+                continue  # dòng hỏng -> bỏ
+            if ts >= cutoff:
+                keep.append(line)
+        if len(keep) != len(lines):
+            self.log_path.write_text("\n".join(keep) + "\n", encoding="utf-8")
+
+    # ------------------------------------------------------------------
+    def summarize(self, days: int = 90) -> dict:
+        """Tổng hợp: tổng requests, hôm nay, top IP, số upload, status."""
+        records = self.read()
+        now = datetime.now()
+        today = now.date().isoformat()
+        cutoff = now - timedelta(days=days)
+
+        total = 0
+        today_count = 0
+        uploads = 0
+        no_match = 0
+        ip_counts: dict[str, int] = {}
+        hour_counts: dict[int, int] = {}
+        day_counts: dict[str, int] = {}
+
+        for r in records:
+            try:
+                ts = datetime.fromisoformat(r.get("ts", ""))
+            except ValueError:
+                continue
+            if ts < cutoff:
+                continue
+            total += 1
+            date = ts.date().isoformat()
+            day_counts[date] = day_counts.get(date, 0) + 1
+            if date == today:
+                today_count += 1
+            ip = r.get("ip", "")
+            if ip:
+                ip_counts[ip] = ip_counts.get(ip, 0) + 1
+            hour = ts.hour
+            hour_counts[hour] = hour_counts.get(hour, 0) + 1
+            if r.get("method") == "POST" and r.get("path", "").startswith("/process"):
+                uploads += 1
+                if r.get("status") == 200:
+                    # status 200 = có kết quả (kể cả no_match cũng 200)
+                    no_match += 0  # không phân biệt được nếu không có extra
+            if r.get("path", "").startswith("/process") and r.get("status") == 200:
+                no_match += 0
+
+        top_ips = sorted(ip_counts.items(), key=lambda kv: kv[1], reverse=True)[:10]
+
+        return {
+            "total": total,
+            "today": today_count,
+            "uploads": uploads,
+            "top_ips": [{"ip": ip, "count": c} for ip, c in top_ips],
+            "by_hour": {str(h): hour_counts.get(h, 0) for h in range(24)},
+            "by_day": dict(sorted(day_counts.items())),
+            "retention_days": self.retention_days,
+        }

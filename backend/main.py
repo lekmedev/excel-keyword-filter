@@ -15,6 +15,8 @@ Nguyên tắc dữ liệu:
 
 import csv
 import io
+import json
+import os
 import re
 import shutil
 import tempfile
@@ -23,12 +25,13 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.background import BackgroundTask
 
 from .excel_processor import ExcelProcessingError, NoMatchError, convert_csv_to_xlsx, process_excel
+from .stats import Stats
 
 app = FastAPI(title="Excel Keyword Filter", version="1.1.0")
 
@@ -39,6 +42,9 @@ JOB_TTL = timedelta(hours=1)  # file tạm không bao giờ sống lâu hơn 1 g
 JOB_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 
 TEMP_ROOT = Path(tempfile.gettempdir()) / "excel_keyword_filter"
+STATS_DIR = Path(os.environ.get("STATS_DIR", tempfile.gettempdir())) / "excel_stats"
+STATS_RETENTION_DAYS = 90
+stats = Stats(STATS_DIR, retention_days=STATS_RETENTION_DAYS)
 
 
 # ---------------------------------------------------------------------------
@@ -68,6 +74,14 @@ def _sweep_jobs() -> None:
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/stats")
+async def stats_page():
+    """Trang thống kê sử dụng người dùng."""
+    data = stats.summarize(days=STATS_RETENTION_DAYS)
+    html = _render_stats_html(data)
+    return HTMLResponse(html)
 
 
 @app.post("/process")
@@ -160,11 +174,93 @@ FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
 
 
+def _render_stats_html(data: dict) -> str:
+    """Render trang /stats đơn giản (Bootstrap) từ dữ liệu tổng hợp."""
+    top_rows = "".join(
+        f"<tr><td>{i+1}</td><td>{ip}</td><td class='text-end'>{c}</td></tr>"
+        for i, (ip, c) in enumerate(
+            [(t["ip"], t["count"]) for t in data.get("top_ips", [])]
+        )
+    ) or "<tr><td colspan='3' class='text-center'>Chưa có dữ liệu</td></tr>"
+
+    # Biểu đồ theo giờ (đơn giản: bar bằng div)
+    hours = data.get("by_hour", {})
+    max_h = max(hours.values()) if hours else 1
+    bars = ""
+    for h in range(24):
+        cnt = hours.get(str(h), 0)
+        pct = int(cnt / max_h * 100) if max_h else 0
+        bars += (
+            f"<div class='d-flex align-items-center mb-1'>"
+            f"<span class='me-2' style='width:28px'>{h:02d}h</span>"
+            f"<div class='flex-grow-1'><div class='bg-primary' style='height:14px;width:{pct}%'></div></div>"
+            f"<span class='ms-2'>{cnt}</span></div>"
+        )
+
+    return f"""<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Thống kê sử dụng</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+<div class="container py-4">
+  <h1 class="mb-4">📊 Thống kê sử dụng</h1>
+  <div class="row g-3 mb-4">
+    <div class="col-md-4"><div class="card"><div class="card-body text-center">
+      <div class="fs-3 fw-bold">{data.get('total', 0)}</div><div class="text-secondary">Tổng requests</div>
+    </div></div></div>
+    <div class="col-md-4"><div class="card"><div class="card-body text-center">
+      <div class="fs-3 fw-bold">{data.get('today', 0)}</div><div class="text-secondary">Hôm nay</div>
+    </div></div></div>
+    <div class="col-md-4"><div class="card"><div class="card-body text-center">
+      <div class="fs-3 fw-bold">{data.get('uploads', 0)}</div><div class="text-secondary">Số lần upload</div>
+    </div></div></div>
+  </div>
+  <div class="row g-3">
+    <div class="col-lg-6">
+      <div class="card"><div class="card-header">Top IP</div>
+      <div class="card-body p-0"><table class="table table-sm mb-0">
+        <thead><tr><th>#</th><th>IP</th><th class="text-end">Lượt</th></tr></thead>
+        <tbody>{top_rows}</tbody></table></div></div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card"><div class="card-header">Theo giờ trong ngày</div>
+      <div class="card-body">{bars}</div></div>
+    </div>
+  </div>
+  <p class="text-secondary small mt-4">Giữ log {data.get('retention_days', 90)} ngày, tự xóa. IP lấy từ CF-Connecting-IP (sau Cloudflare).</p>
+</div>
+</body>
+</html>"""
+
+
 @app.middleware("http")
-async def no_cache_frontend(request: Request, call_next):
-    """Chặn cache (browser + Cloudflare) cho HTML/CSS/JS để bản mới hiện ngay."""
-    response = await call_next(request)
+async def log_access(request: Request, call_next):
+    """Ghi log truy cập (không log /stats, /health, static assets)."""
     path = request.url.path
+    is_static = path.startswith(("/style.css", "/script.js")) or path in ("/favicon.ico",)
+    is_ignored = path in ("/stats", "/health") or is_static
+    if is_ignored:
+        return await call_next(request)
+
+    response = await call_next(request)
+    # Giữ cache-busting: HTML/CSS/JS không bao giờ cache lâu (CF + browser).
     if path in ("/", "/index.html", "/style.css", "/script.js") or path.endswith((".css", ".js")):
         response.headers["Cache-Control"] = "no-cache, max-age=0"
+    # IP thật: Cloudflare set CF-Connecting-IP; fallback X-Forwarded-For; rồi client host.
+    ip = (
+        request.headers.get("cf-connecting-ip")
+        or (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+        or request.client.host if request.client else ""
+    )
+    stats.record(
+        ip=ip,
+        method=request.method,
+        path=path,
+        status=response.status_code,
+        ua=request.headers.get("user-agent", ""),
+    )
     return response
