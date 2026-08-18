@@ -91,7 +91,7 @@ def test_columns_deleted_and_stt_inserted(sample_xlsx: Path):
     # Kept cols A..O trừ A,B,G,H,I,K,L,M -> còn C,D,E,F,J,N,O + thêm STT
     # Layout: [STT, C, D, E, F, J, N, O]
     assert ws.cell(row=1, column=1).value == "STT"
-    assert ws.cell(row=2, column=1).value == 1
+    assert ws.cell(row=2, column=1).value == "=ROW()-1"
     assert ws.cell(row=1, column=2).value == "ColC"
     assert ws.cell(row=1, column=3).value == "ColD"
     assert ws.cell(row=1, column=4).value == "ColE"
@@ -109,6 +109,34 @@ def test_quantity_replaced_header(sample_xlsx: Path):
     out, _ = process_excel(sample_xlsx, "keyboard")
     ws = load_workbook(out)["TRUE_Result"]
     assert ws.cell(row=1, column=8).value == "Quantity Replaced"
+
+
+def test_stt_uses_row_formula(sample_xlsx: Path):
+    """STT phải là công thức =ROW()-1 (tự điều chỉnh khi xóa hàng)."""
+    out, _ = process_excel(sample_xlsx, "keyboard\nbàn phím")
+    ws = load_workbook(out)["TRUE_Result"]
+    assert ws.cell(row=2, column=1).value == "=ROW()-1"
+    assert ws.cell(row=3, column=1).value == "=ROW()-1"
+
+
+def test_total_row(sample_xlsx: Path):
+    """Dòng Total: merge A->G, italic+bold, align right, H = SUM(H2:H{last})."""
+    out, _ = process_excel(sample_xlsx, "keyboard\nbàn phím")
+    ws = load_workbook(out)["TRUE_Result"]
+    # 2 dòng khớp -> header row1, data row2-3, Total row4
+    assert ws.max_row == 4
+    total = ws.cell(row=4, column=1)
+    assert total.value == "Total"
+    assert total.font.italic is True and total.font.bold is True
+    assert total.alignment.horizontal == "right"
+    # A4:G4 merged
+    assert any(
+        rng.min_row == 4 and rng.min_col == 1 and rng.max_row == 4 and rng.max_col == 7
+        for rng in ws.merged_cells.ranges
+    )
+    sum_cell = ws.cell(row=4, column=8)
+    assert sum_cell.value == "=SUM(H2:H3)"
+    assert sum_cell.font.italic is True and sum_cell.font.bold is True
 
 
 def test_auto_width_and_borders(sample_xlsx: Path):

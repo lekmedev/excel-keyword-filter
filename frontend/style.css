@@ -31,3 +31,10 @@
   padding: 0.15rem 0.35rem;
   border-radius: 0.25rem;
 }
+
+/* Placeholder ô nhập keywords */
+#keywords::placeholder {
+  font-style: italic;
+  color: #999;
+  opacity: 1;
+}

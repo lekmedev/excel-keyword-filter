@@ -23,7 +23,7 @@ from pathlib import Path
 import io
 
 from openpyxl import Workbook, load_workbook
-from openpyxl.styles import Border, Side
+from openpyxl.styles import Alignment, Border, Font, Side
 from openpyxl.utils import get_column_letter
 # Các cột bị XÓA khỏi sheet kết quả (theo spec macro gốc).
 DELETED_COLUMNS = {"A", "B", "G", "H", "I", "K", "L", "M"}
@@ -145,24 +145,41 @@ def process_excel(input_path: Path, keywords_text: str) -> tuple[Path, int]:
     _copy_row(src, out_ws, header_row, layout, out_row=1)
     out_ws.cell(row=1, column=1, value="STT")
 
-    # Copy các dòng khớp + đánh STT.
+    # Copy các dòng khớp; STT dùng công thức =ROW()-1 để khi xóa hàng
+    # số thứ tự tự động điều chỉnh lại (mục đích của macro gốc).
     for idx, src_row in enumerate(matched_rows, start=2):
         _copy_row(src, out_ws, src_row, layout, out_row=idx)
-        out_ws.cell(row=idx, column=1, value=idx - 1)
+        out_ws.cell(row=idx, column=1, value=f"=ROW()-1")
     last_row = len(matched_rows) + 1
 
     # 4) Header "Quantity Replaced" tại cột H của kết quả.
     #    Nếu file gốc ít cột hơn 8, mở rộng tối thiểu tới cột H để đủ chỗ đặt header.
     out_ws.cell(row=1, column=QUANTITY_HEADER_COLUMN, value="Quantity Replaced")
 
-    # 5) Copy vùng merged (nếu header bị merge) để giữ giao diện.
+    # 5) Dòng Total: merge A->G, italic + bold, align right, H = SUM(2:last_row).
+    total_row = last_row + 1
+    if total_row >= 2:  # luôn đúng vì có >=1 dòng khớp (đã check NoMatchError)
+        out_ws.merge_cells(
+            start_row=total_row, start_column=1, end_row=total_row, end_column=7
+        )
+        total_cell = out_ws.cell(row=total_row, column=1, value="Total")
+        total_cell.font = Font(italic=True, bold=True)
+        total_cell.alignment = Alignment(horizontal="right")
+        sum_cell = out_ws.cell(
+            row=total_row,
+            column=QUANTITY_HEADER_COLUMN,
+            value=f"=SUM(H2:H{last_row})",
+        )
+        sum_cell.font = Font(italic=True, bold=True)
+
+    # 6) Copy vùng merged (nếu header bị merge) để giữ giao diện.
     _copy_merges(src, out_ws, matched_rows, layout, header_row)
 
-    # 6) Format: border toàn bộ bảng + auto width.
-    _apply_borders(out_ws, last_row)
-    _auto_width(out_ws, last_row)
+    # 7) Format: border toàn bộ bảng (gồm dòng Total) + auto width.
+    _apply_borders(out_ws, total_row)
+    _auto_width(out_ws, total_row)
 
-    # 7) Lưu file kết quả cạnh file gốc (cùng job dir -> dễ dọn dẹp).
+    # 8) Lưu file kết quả cạnh file gốc (cùng job dir -> dễ dọn dẹp).
     output_path = input_path.with_name("TRUE_Result.xlsx")
     out_wb.save(output_path)
 
