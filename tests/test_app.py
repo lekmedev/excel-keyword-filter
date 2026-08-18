@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from openpyxl import Workbook, load_workbook
+from openpyxl.utils import get_column_letter
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -92,23 +93,23 @@ def test_columns_deleted_and_stt_inserted(sample_xlsx: Path):
     # Layout: [STT, C, D, E, F, J, N, O]
     assert ws.cell(row=1, column=1).value == "STT"
     assert ws.cell(row=2, column=1).value == "=ROW()-1"
-    assert ws.cell(row=1, column=2).value == "ColC"
-    assert ws.cell(row=1, column=3).value == "ColD"
-    assert ws.cell(row=1, column=4).value == "ColE"
-    assert ws.cell(row=1, column=5).value == "ColF"
-    assert ws.cell(row=1, column=6).value == "ColJ"
-    assert ws.cell(row=1, column=7).value == "ColN"
+    assert ws.cell(row=1, column=2).value == "COLC"
+    assert ws.cell(row=1, column=3).value == "COLD"
+    assert ws.cell(row=1, column=4).value == "COLE"
+    assert ws.cell(row=1, column=5).value == "COLF"
+    assert ws.cell(row=1, column=6).value == "COLJ"
+    assert ws.cell(row=1, column=7).value == "COLN"
     assert ws.cell(row=2, column=7).value == "Logitech keyboard"
     # Cột H (8) bị header "Quantity Replaced" ghi đè theo spec macro gốc;
     # dữ liệu cột O gốc vẫn nằm bên dưới (ô H2 = "o2").
-    assert ws.cell(row=1, column=8).value == "Quantity Replaced"
+    assert ws.cell(row=1, column=8).value == "QUANTITY REPLACED"
     assert ws.cell(row=2, column=8).value == "o2"
 
 
 def test_quantity_replaced_header(sample_xlsx: Path):
     out, _ = process_excel(sample_xlsx, "keyboard")
     ws = load_workbook(out)["TRUE_Result"]
-    assert ws.cell(row=1, column=8).value == "Quantity Replaced"
+    assert ws.cell(row=1, column=8).value == "QUANTITY REPLACED"
 
 
 def test_stt_uses_row_formula(sample_xlsx: Path):
@@ -142,11 +143,93 @@ def test_total_row(sample_xlsx: Path):
 def test_auto_width_and_borders(sample_xlsx: Path):
     out, _ = process_excel(sample_xlsx, "keyboard")
     ws = load_workbook(out)["TRUE_Result"]
-    # Auto width được đặt
-    assert ws.column_dimensions["A"].width is not None
-    assert ws.column_dimensions["H"].width is not None
     # Border trên ô dữ liệu
     assert ws.cell(row=2, column=2).border.left.style == "thin"
+
+
+def test_header_style_black_white_upper(sample_xlsx: Path):
+    """Header row 1: nền đen, chữ trắng, viết hoa, center align, wrap."""
+    out, _ = process_excel(sample_xlsx, "keyboard\nbàn phím")
+    ws = load_workbook(out)["TRUE_Result"]
+    for col in range(1, 9):  # A -> H
+        cell = ws.cell(row=1, column=col)
+        assert cell.fill.start_color.rgb in ("00000000", "FF000000", "000000")  # nền đen
+        assert cell.font.color.rgb in ("00FFFFFF", "FFFFFFFF", "FFFFFF")  # chữ trắng
+        assert cell.font.bold is True
+        assert cell.alignment.horizontal == "center"
+        assert cell.alignment.vertical in ("center", "middle")  # openpyxl dùng center
+        assert cell.alignment.wrap_text is True
+        # Viết hoa (trừ khi đã hoa sẵn)
+        assert str(cell.value).upper() == str(cell.value)
+
+
+def test_fixed_column_widths(sample_xlsx: Path):
+    """Widths cột cố định: A=3, B=11, C=20, D=15, E=35, F=15, G=45, H=8."""
+    out, _ = process_excel(sample_xlsx, "keyboard")
+    ws = load_workbook(out)["TRUE_Result"]
+    expected = {"A": 3, "B": 11, "C": 20, "D": 15, "E": 35, "F": 15, "G": 45, "H": 8}
+    for col_letter, width in expected.items():
+        assert ws.column_dimensions[col_letter].width == width
+
+
+def test_column_b_time_stripped(tmp_path: Path):
+    """Cột B của kết quả (out_col 2 = ColC gốc) bỏ phần thời gian:
+    '05-Thg 01-26 08:43 SA' -> '05-Thg 01-26'."""
+    wb = Workbook()
+    ws = wb.active
+    # CSV 15 cột; date nằm ở cột C gốc => trong kết quả nó thành out_col 2 (cột B).
+    for c, h in enumerate(["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O"], start=1):
+        ws.cell(row=1, column=c, value=f"Col{h}")
+    ws.append(["x", "b", "05-Thg 01-26 08:43 SA", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "Logitech keyboard", "o"])
+    ws.append(["y", "b", "05-Thg 07-02-26 08:43 CH", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "Wireless mouse", "o"])
+    ws.append(["z", "b", "plain-text", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "MOUSE gaming", "o"])
+    path = tmp_path / "date.xlsx"
+    wb.save(path)
+
+    out, count = process_excel(path, "keyboard\nmouse")
+    assert count == 3
+    ws_out = load_workbook(out)["TRUE_Result"]
+    # out_col 2 = cột B của kết quả = ColC gốc -> date đã strip time
+    assert ws_out.cell(row=2, column=2).value == "05-Thg 01-26"
+    assert ws_out.cell(row=3, column=2).value == "05-Thg 07-02-26"
+    # Giá trị không phải pattern giữ nguyên
+    assert ws_out.cell(row=4, column=2).value == "plain-text"
+
+
+def test_data_cells_centered_wrapped(sample_xlsx: Path):
+    """Data (trừ Total) center+wrap; Total giữ right."""
+    out, _ = process_excel(sample_xlsx, "keyboard")
+    ws = load_workbook(out)["TRUE_Result"]
+    total_row = ws.max_row
+    for row in range(2, total_row):  # data rows, không phải Total
+        for col in range(1, 9):
+            cell = ws.cell(row=row, column=col)
+            assert cell.alignment.horizontal == "center"
+            assert cell.alignment.vertical in ("center", "middle")
+            assert cell.alignment.wrap_text is True
+    total = ws.cell(row=total_row, column=1)
+    assert total.alignment.horizontal == "right"  # giữ nguyên
+    assert total.font.italic is True and total.font.bold is True
+
+
+def test_print_settings(sample_xlsx: Path):
+    """Print: landscape, repeat header row 1, fit to width 1 page."""
+    out, _ = process_excel(sample_xlsx, "keyboard")
+    ws = load_workbook(out)["TRUE_Result"]
+    assert ws.page_setup.orientation == "landscape"
+    assert ws.print_title_rows == "$1:$1"
+    assert ws.sheet_properties.pageSetUpPr.fitToPage is True
+    assert ws.page_setup.fitToWidth == 1
+    assert ws.page_setup.fitToHeight == 0
+
+
+def test_data_rows_wrap_text_flag(sample_xlsx: Path):
+    """Toàn sheet wrap_text=True (trừ Total row giữ nguyên — check data rows)."""
+    out, _ = process_excel(sample_xlsx, "keyboard")
+    ws = load_workbook(out)["TRUE_Result"]
+    for row in range(1, ws.max_row):  # header + data, không gồm Total
+        for col in range(1, 9):
+            assert ws.cell(row=row, column=col).alignment.wrap_text is True
 
 
 def test_no_match_raises(sample_xlsx: Path):
@@ -178,7 +261,7 @@ def test_min_cols_no_quantity_issue(tmp_path: Path):
     assert ws_out.cell(row=1, column=1).value == "STT"
     assert ws_out.cell(row=1, column=7).value == "C14"  # cột N gốc thành cột 7
     assert ws_out.cell(row=2, column=7).value == "Logitech keyboard"
-    assert ws_out.cell(row=1, column=8).value == "Quantity Replaced"
+    assert ws_out.cell(row=1, column=8).value == "QUANTITY REPLACED"
 
 
 # ---------------------------------------------------------------------------
@@ -297,7 +380,7 @@ def test_process_csv(tmp_path: Path, client):
     wb = load_workbook(io.BytesIO(r2.content))
     ws = wb["TRUE_Result"]
     assert ws.cell(row=2, column=7).value == "Logitech keyboard"
-    assert ws.cell(row=1, column=8).value == "Quantity Replaced"
+    assert ws.cell(row=1, column=8).value == "QUANTITY REPLACED"
 
 
 def test_process_csv_semicolon(tmp_path: Path, client):

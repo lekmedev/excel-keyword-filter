@@ -21,9 +21,10 @@ không bao giờ bị sửa.
 from copy import copy
 from pathlib import Path
 import io
+import re
 
 from openpyxl import Workbook, load_workbook
-from openpyxl.styles import Alignment, Border, Font, Side
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 # Các cột bị XÓA khỏi sheet kết quả (theo spec macro gốc).
 DELETED_COLUMNS = {"A", "B", "G", "H", "I", "K", "L", "M"}
@@ -34,8 +35,15 @@ KEYWORD_COLUMN = 14
 # Cột H trong sheet kết quả (sau khi đã xóa cột và chèn STT).
 QUANTITY_HEADER_COLUMN = 8
 
+# Chiều rộng cột cố định cho sheet kết quả (theo yêu cầu in ấn).
+COL_WIDTHS = {1: 3, 2: 11, 3: 20, 4: 15, 5: 35, 6: 15, 7: 45, 8: 8}
+
 THIN = Side(style="thin", color="000000")
 BOX_BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
+
+# Pattern cột B (out_col 2): "05-Thg 01-26 08:43 SA" -> "05-Thg 01-26".
+# Bắt: prefix bất kỳ + khoảng trắng + giờ:phút + (SA|CH) tùy chọn.
+DATE_TIME_RE = re.compile(r"^(.*?)\s+\d{1,2}:\d{2}(\s*(SA|CH))?\s*$", re.IGNORECASE)
 
 
 class ExcelProcessingError(Exception):
@@ -175,9 +183,15 @@ def process_excel(input_path: Path, keywords_text: str) -> tuple[Path, int]:
     # 6) Copy vùng merged (nếu header bị merge) để giữ giao diện.
     _copy_merges(src, out_ws, matched_rows, layout, header_row)
 
-    # 7) Format: border toàn bộ bảng (gồm dòng Total) + auto width.
+    # 7) Format nâng cao: header (đen/trắng/hoa/giữa), width cột cố định,
+    #    strip thời gian cột B, alignment toàn sheet (trừ Total), wrap text,
+    #    border, print settings.
+    _apply_header_style(out_ws)
+    _apply_fixed_widths(out_ws)
+    _strip_column_b_times(out_ws, last_row)
+    _apply_alignment(out_ws, total_row)
     _apply_borders(out_ws, total_row)
-    _auto_width(out_ws, total_row)
+    _apply_print_settings(out_ws)
 
     # 8) Lưu file kết quả cạnh file gốc (cùng job dir -> dễ dọn dẹp).
     output_path = input_path.with_name("TRUE_Result.xlsx")
@@ -258,13 +272,61 @@ def _apply_borders(ws, last_row: int) -> None:
 
 
 def _auto_width(ws, last_row: int) -> None:
-    """Auto width: chữ CJK (tiếng Trung/Hàn) tính gấp đôi chiều rộng để vừa chữ."""
-    for col in range(1, ws.max_column + 1):
-        longest = 0
-        for row in range(1, last_row + 1):
-            value = ws.cell(row=row, column=col).value
-            if value is None:
-                continue
-            length = sum(2 if ord(ch) > 0x2E80 else 1 for ch in str(value))
-            longest = max(longest, length)
-        ws.column_dimensions[get_column_letter(col)].width = max(10, min(longest + 2, 60))
+    """(Không còn dùng) — width cột đã cố định theo COL_WIDTHS."""
+    pass
+
+
+def _apply_header_style(ws) -> None:
+    """Header row 1: nền đen, chữ trắng, đậm, viết hoa, center align, wrap."""
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(fill_type="solid", fgColor="000000")
+    header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    for col in range(1, 9):  # A -> H
+        cell = ws.cell(row=1, column=col)
+        if cell.value is not None:
+            cell.value = str(cell.value).upper()
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_align
+
+
+def _apply_fixed_widths(ws) -> None:
+    """Set width cố định cho 8 cột kết quả theo COL_WIDTHS."""
+    for col, width in COL_WIDTHS.items():
+        ws.column_dimensions[get_column_letter(col)].width = width
+
+
+def _strip_time_from_date(value):
+    """Bỏ phần giờ:phút + (SA|CH) khỏi chuỗi nếu khớp pattern date+time."""
+    if not isinstance(value, str):
+        return value
+    m = DATE_TIME_RE.match(value.strip())
+    if m:
+        return m.group(1).strip()
+    return value
+
+
+def _strip_column_b_times(ws, last_row: int) -> None:
+    """Cột B (out_col=2) của kết quả: bỏ phần thời gian ở mỗi ô dữ liệu."""
+    for row in range(2, last_row + 1):
+        cell = ws.cell(row=row, column=2)
+        cell.value = _strip_time_from_date(cell.value)
+
+
+def _apply_alignment(ws, total_row: int) -> None:
+    """Toàn sheet (trừ dòng Total) center align + wrap text;
+    dòng Total giữ nguyên align right (không đổi style của nó)."""
+    for row in range(1, total_row):
+        for col in range(1, 9):
+            cell = ws.cell(row=row, column=col)
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+
+def _apply_print_settings(ws) -> None:
+    """Print setup: landscape, A4, repeat header row 1, fit 1 trang ngang."""
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.paperSize = ws.PAPERSIZE_A4
+    ws.print_title_rows = "1:1"
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0

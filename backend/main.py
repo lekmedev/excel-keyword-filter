@@ -22,9 +22,10 @@ import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.background import BackgroundTask
 
 from .excel_processor import ExcelProcessingError, NoMatchError, convert_csv_to_xlsx, process_excel
@@ -157,3 +158,13 @@ async def download(job_id: str):
 # Mount frontend tĩnh — phải khai báo SAU các route API để không nuốt mất chúng.
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
+
+
+@app.middleware("http")
+async def no_cache_frontend(request: Request, call_next):
+    """Chặn cache (browser + Cloudflare) cho HTML/CSS/JS để bản mới hiện ngay."""
+    response = await call_next(request)
+    path = request.url.path
+    if path in ("/", "/index.html", "/style.css", "/script.js") or path.endswith((".css", ".js")):
+        response.headers["Cache-Control"] = "no-cache, max-age=0"
+    return response
