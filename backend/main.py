@@ -20,6 +20,7 @@ import os
 import re
 import shutil
 import tempfile
+import time
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -86,9 +87,10 @@ async def stats_page():
 
 
 @app.get("/stats/data")
-async def stats_data():
-    """JSON dữ liệu thống kê cho /stats."""
-    return stats.summarize(days=STATS_RETENTION_DAYS)
+async def stats_data(days: int = 90):
+    """JSON dữ liệu thống kê cho /stats (lọc theo khoảng ngày)."""
+    days = min(max(days, 1), 365)
+    return stats.summarize(days=days)
 
 
 @app.post("/process")
@@ -137,8 +139,11 @@ async def process(request: Request, file: UploadFile = File(...), keywords: str 
         input_path = converted
 
     # Xử lý Excel.
+    t0 = time.monotonic()
+    file_size_mb = round(size / (1024 * 1024), 2) if size else 0
     try:
         output_path, match_count = process_excel(input_path, keywords)
+        duration_ms = round((time.monotonic() - t0) * 1000)
     except NoMatchError as exc:
         stats.record(
             ip=_client_ip(request),
@@ -146,7 +151,13 @@ async def process(request: Request, file: UploadFile = File(...), keywords: str 
             path="/process",
             status=200,
             ua="",
-            extra={"keywords": keywords},
+            extra={
+                "keywords": keywords,
+                "filename": filename,
+                "file_size_mb": file_size_mb,
+                "duration_ms": round((time.monotonic() - t0) * 1000),
+                "match_count": 0,
+            },
         )
         shutil.rmtree(job_dir, ignore_errors=True)
         return {"status": "no_match", "message": str(exc), "download_url": None}
@@ -157,19 +168,30 @@ async def process(request: Request, file: UploadFile = File(...), keywords: str 
             path="/process",
             status=400,
             ua="",
-            extra={"keywords": keywords},
+            extra={
+                "keywords": keywords,
+                "filename": filename,
+                "file_size_mb": file_size_mb,
+                "duration_ms": round((time.monotonic() - t0) * 1000),
+            },
         )
         shutil.rmtree(job_dir, ignore_errors=True)
         raise HTTPException(status_code=400, detail=str(exc))
 
-    # Log upload thành công kèm keywords + match_count.
+    # Log upload thành công kèm keywords + match_count + filename + duration.
     stats.record(
         ip=_client_ip(request),
         method="POST",
         path="/process",
         status=200,
         ua=request.headers.get("user-agent", ""),
-        extra={"keywords": keywords, "match_count": match_count},
+        extra={
+            "keywords": keywords,
+            "match_count": match_count,
+            "filename": filename,
+            "file_size_mb": file_size_mb,
+            "duration_ms": duration_ms,
+        },
     )
 
     return {

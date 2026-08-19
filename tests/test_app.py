@@ -522,7 +522,8 @@ def test_stats_endpoint_renders(client, tmp_path: Path, monkeypatch):
     # /stats trả HTML trang (file tĩnh tồn tại trong frontend/)
     r = client.get("/stats")
     assert r.status_code == 200
-    assert "Thống kê sử dụng" in r.text
+    assert "Thống kê hoạt động Webapp" in r.text
+    assert "Chart.js" in r.text or "chart.js" in r.text
 
     # /stats/data trả JSON tổng hợp
     r2 = client.get("/stats/data")
@@ -555,3 +556,40 @@ def test_stats_process_logs_keywords(client, tmp_path: Path, monkeypatch):
     assert "keyboard" in process_recs[0]["keywords"]
     assert "mouse" in process_recs[0]["keywords"]
     assert "match_count" in process_recs[0]
+    # Field mới v1.6
+    assert process_recs[0]["filename"] == "t.csv"
+    assert "file_size_mb" in process_recs[0]
+    assert process_recs[0]["duration_ms"] > 0
+
+
+def test_stats_summarize_extra_fields(tmp_path: Path):
+    """summarize trả unique_ips, error_count, avg_duration_ms."""
+    from backend.stats import Stats
+
+    s = Stats(tmp_path / "stats4", retention_days=90)
+    s.record(ip="1.1.1.1", method="POST", path="/process", status=200, extra={"keywords": "a", "duration_ms": 500})
+    s.record(ip="1.1.1.1", method="POST", path="/process", status=200, extra={"keywords": "b", "duration_ms": 700})
+    s.record(ip="2.2.2.2", method="POST", path="/process", status=400, extra={"keywords": "c", "duration_ms": 300})
+
+    d = s.summarize(days=90)
+    assert d["unique_ips"] == 2
+    assert d["error_count"] == 1
+    assert d["avg_duration_ms"] == 500.0  # (500+700+300)/3
+
+
+def test_stats_data_days_param(client, tmp_path: Path, monkeypatch):
+    """GET /stats/data?days=7 source ngày param."""
+    from backend import main as main_mod
+    from backend.stats import Stats
+
+    log_dir = tmp_path / "stats5"
+    test_stats = Stats(log_dir, retention_days=90)
+    test_stats.record(ip="1.1.1.1", method="POST", path="/process", status=200, extra={"keywords": "x"})
+    test_stats.record(ip="1.1.1.1", method="GET", path="/download/abc", status=200)
+    monkeypatch.setattr(main_mod, "stats", test_stats)
+
+    r = client.get("/stats/data?days=7")
+    assert r.status_code == 200
+    assert r.json()["total"] == 2
+    r2 = client.get("/stats/data?days=0")
+    assert r2.status_code == 200  # clamp về 1

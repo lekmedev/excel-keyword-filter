@@ -110,6 +110,9 @@ class Stats:
         day_counts: dict[str, int] = {}
         keyword_counts: dict[str, int] = {}
         recent: list[dict] = []
+        unique_ips: set[str] = set()
+        error_count = 0
+        durations: list[float] = []
 
         for r in records:
             try:
@@ -125,9 +128,14 @@ class Stats:
                 today_count += 1
             ip = r.get("ip", "")
             if ip:
+                unique_ips.add(ip)
                 ip_counts[ip] = ip_counts.get(ip, 0) + 1
             hour = ts.hour
             hour_counts[hour] = hour_counts.get(hour, 0) + 1
+            if int(r.get("status", 200) or 200) != 200:
+                error_count += 1
+            if r.get("duration_ms") is not None:
+                durations.append(float(r["duration_ms"]))
             if r.get("method") == "POST" and r.get("path", "").startswith("/process"):
                 uploads += 1
                 # Đếm từ khóa user nhập (nếu có) — tách theo \n hoặc ,
@@ -152,10 +160,17 @@ class Stats:
         top_ips = sorted(ip_counts.items(), key=lambda kv: kv[1], reverse=True)[:10]
         top_keywords = sorted(keyword_counts.items(), key=lambda kv: kv[1], reverse=True)[:20]
 
+        success_rate = round((total - error_count) / total * 100, 1) if total else 100.0
+        avg_duration_ms = round(sum(durations) / len(durations), 1) if durations else 0
+
         return {
             "total": total,
             "today": today_count,
             "uploads": uploads,
+            "unique_ips": len(unique_ips),
+            "error_count": error_count,
+            "success_rate": success_rate,
+            "avg_duration_ms": avg_duration_ms,
             "top_ips": [{"ip": ip, "count": c} for ip, c in top_ips],
             "top_keywords": [{"keyword": kw, "count": c} for kw, c in top_keywords],
             "keyword_count": len(keyword_counts),

@@ -1,184 +1,329 @@
-<!doctype html>
-<html lang="vi" data-bs-theme="dark">
+<!DOCTYPE html>
+<html lang="vi">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Thống kê sử dụng — Excel Keyword Filter</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<style>
-  body { background: #0f1117; color: #e6e8ee; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-  .glass { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: 16px; backdrop-filter: blur(8px); }
-  .stat-num { font-size: 2rem; font-weight: 700; line-height: 1.1; }
-  .stat-label { color: #8b90a0; font-size: .85rem; }
-  .accent { color: #5eead4; }
-  .accent2 { color: #a78bfa; }
-  .table { --bs-table-bg: transparent; color: #cfd3de; }
-  .table thead th { color: #8b90a0; font-weight: 600; border-bottom-color: rgba(255,255,255,.1); }
-  .chip { display:inline-block; padding: .18rem .6rem; margin: .12rem; border-radius: 999px; background: rgba(94,234,212,.12); color: #5eead4; font-size: .8rem; }
-  .status-ok { color: #4ade80; } .status-err { color: #f87171; }
-  .muted { color: #6b7280; }
-  .chart-box { position: relative; height: 240px; width: 100%; }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Excel Filter Analytics Dashboard</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    [x-cloak] { display: none; }
+    .chart-wrap { position: relative; height: 256px; width: 100%; }
+  </style>
 </head>
-<body>
-<div class="container py-4">
-  <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
-    <div>
-      <h1 class="h3 mb-0">📊 Thống kê sử dụng</h1>
-      <div class="muted small">Excel Keyword Filter — log giữ 90 ngày, tự xóa</div>
-    </div>
-    <div class="muted small" id="updatedAt"></div>
+<body class="bg-slate-50 text-slate-800 antialiased font-sans">
+
+  <div class="min-h-screen flex">
+    <!-- Sidebar -->
+    <aside class="w-64 bg-slate-900 text-white p-5 flex flex-col justify-between hidden md:flex">
+      <div>
+        <div class="flex items-center gap-3 mb-8">
+          <div class="w-9 h-9 bg-emerald-500 rounded-lg flex items-center justify-center font-bold text-white shadow-lg shadow-emerald-500/20">
+            X
+          </div>
+          <div>
+            <h1 class="font-bold text-base tracking-tight">ExcelFilter Admin</h1>
+            <p class="text-xs text-slate-400">Monitoring & Logs</p>
+          </div>
+        </div>
+
+        <nav class="space-y-1.5 text-sm font-medium">
+          <a href="/" class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-emerald-600/10 text-emerald-400 border border-emerald-500/20">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+            Tổng quan (Overview)
+          </a>
+          <a href="#" onclick="scrollToSection('keywords')" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"/></svg>
+            Từ khóa & Tệp tin
+          </a>
+          <a href="#" onclick="scrollToSection('security')" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+            Bảo mật & Giám sát IP
+          </a>
+        </nav>
+      </div>
+
+      <div class="text-xs text-slate-500 border-t border-slate-800 pt-4">
+        Server Status: <span class="text-emerald-400 font-medium">● Healthy</span>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 p-6 md:p-8 overflow-y-auto max-w-7xl mx-auto w-full">
+      <!-- Top Header -->
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+        <div>
+          <h2 class="text-2xl font-bold text-slate-900 tracking-tight">Thống kê hoạt động Webapp</h2>
+          <p class="text-sm text-slate-500 mt-1">Dữ liệu thời gian thực về lượt lọc file Excel, từ khóa và địa chỉ IP.</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <select id="rangeSelect" class="bg-white border border-slate-200 text-sm font-medium rounded-lg px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+            <option value="1">Hôm nay</option>
+            <option value="7" selected>7 ngày qua</option>
+            <option value="30">30 ngày qua</option>
+            <option value="90">90 ngày qua</option>
+          </select>
+          <button onclick="exportCSV()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-4 py-2 rounded-lg shadow-sm transition">
+            Xuất báo cáo
+          </button>
+        </div>
+      </div>
+
+      <!-- KPI Scorecards -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+        <div class="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm">
+          <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Tổng lượt lọc file</div>
+          <div class="flex items-baseline justify-between">
+            <span id="kpiUploads" class="text-2xl font-bold text-slate-900">–</span>
+          </div>
+          <p class="text-xs text-slate-500 mt-2">Số lần upload & xử lý</p>
+        </div>
+
+        <div class="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm">
+          <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Unique IPs</div>
+          <div class="flex items-baseline justify-between">
+            <span id="kpiIps" class="text-2xl font-bold text-slate-900">–</span>
+          </div>
+          <p class="text-xs text-slate-500 mt-2">Địa chỉ IP phân biệt</p>
+        </div>
+
+        <div class="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm">
+          <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Tỷ lệ thành công</div>
+          <div class="flex items-baseline justify-between">
+            <span id="kpiSuccess" class="text-2xl font-bold text-slate-900">–</span>
+          </div>
+          <p class="text-xs text-slate-500 mt-2"><span id="kpiErrors">0</span> yêu cầu lỗi</p>
+        </div>
+
+        <div class="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm">
+          <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Thời gian xử lý TB</div>
+          <div class="flex items-baseline justify-between">
+            <span id="kpiAvg" class="text-2xl font-bold text-slate-900">–</span>
+          </div>
+          <p class="text-xs text-slate-500 mt-2">Tính theo xử lý file</p>
+        </div>
+      </div>
+
+      <!-- Charts Section -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        <!-- Request Volume Line Chart -->
+        <div class="lg:col-span-2 bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-semibold text-slate-900 text-sm">Lượt xử lý theo ngày</h3>
+            <span id="chartRangeLabel" class="text-xs text-slate-400">7 ngày gần nhất</span>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="trafficChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Top Keywords Bar Chart -->
+        <div id="keywords" class="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-semibold text-slate-900 text-sm">Top từ khóa được tìm</h3>
+            <span class="text-xs text-slate-400">Tần suất</span>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="keywordsChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Activity Log Table -->
+      <div id="security" class="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden">
+        <div class="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h3 class="font-semibold text-slate-900 text-base">Nhật ký xử lý gần đây</h3>
+            <p class="text-xs text-slate-500 mt-0.5">Chi tiết các yêu cầu lọc file vừa được thực thi</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <input id="searchInput" type="text" placeholder="Tìm kiếm IP hoặc từ khóa..." class="border border-slate-200 text-xs rounded-lg px-3 py-2 w-64 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-50/80 text-slate-500 font-semibold border-b border-slate-100 uppercase tracking-wider">
+              <tr>
+                <th class="px-5 py-3">Thời gian</th>
+                <th class="px-5 py-3">Địa chỉ IP</th>
+                <th class="px-5 py-3">Từ khóa tìm kiếm</th>
+                <th class="px-5 py-3">Tên file</th>
+                <th class="px-5 py-3">Dòng khớp</th>
+                <th class="px-5 py-3">Thời gian xử lý</th>
+                <th class="px-5 py-3 text-right">Trạng thái</th>
+              </tr>
+            </thead>
+            <tbody id="logBody" class="divide-y divide-slate-100 text-slate-700 font-medium">
+              <tr><td colspan="7" class="px-5 py-6 text-center text-slate-400">Đang tải…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
   </div>
 
-  <!-- 4 cards tổng quan -->
-  <div class="row g-3 mb-4">
-    <div class="col-6 col-md-3">
-      <div class="glass p-3 h-100">
-        <div class="stat-num accent" id="statTotal">–</div>
-        <div class="stat-label">Tổng requests</div>
-      </div>
-    </div>
-    <div class="col-6 col-md-3">
-      <div class="glass p-3 h-100">
-        <div class="stat-num accent2" id="statToday">–</div>
-        <div class="stat-label">Hôm nay</div>
-      </div>
-    </div>
-    <div class="col-6 col-md-3">
-      <div class="glass p-3 h-100">
-        <div class="stat-num" style="color:#fbbf24" id="statUploads">–</div>
-        <div class="stat-label">Số lần upload</div>
-      </div>
-    </div>
-    <div class="col-6 col-md-3">
-      <div class="glass p-3 h-100">
-        <div class="stat-num" style="color:#f472b6" id="statKeywords">–</div>
-        <div class="stat-label">Từ khóa đã dùng</div>
-      </div>
-    </div>
-  </div>
+  <script>
+    let allRecords = [];
+    let chartTraffic = null;
+    let chartKeywords = null;
 
-  <!-- Biểu đồ -->
-  <div class="row g-3 mb-4">
-    <div class="col-lg-6">
-      <div class="glass p-3 h-100">
-        <div class="mb-2 fw-semibold small text-uppercase muted">Request theo giờ</div>
-        <div class="chart-box"><canvas id="chartHour"></canvas></div>
-      </div>
-    </div>
-    <div class="col-lg-6">
-      <div class="glass p-3 h-100">
-        <div class="mb-2 fw-semibold small text-uppercase muted">Request theo ngày</div>
-        <div class="chart-box"><canvas id="chartDay"></canvas></div>
-      </div>
-    </div>
-  </div>
+    const DAY_NAMES = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
 
-  <div class="row g-3">
-    <!-- Keywords phổ biến -->
-    <div class="col-lg-6">
-      <div class="glass p-3 h-100">
-        <div class="mb-2 fw-semibold small text-uppercase muted">🔑 Từ khóa filter phổ biến</div>
-        <div id="kwList" class="mb-2"><span class="muted small">Đang tải…</span></div>
-        <table class="table table-sm align-middle mb-0">
-          <thead><tr><th>#</th><th>Từ khóa</th><th class="text-end">Lượt</th></tr></thead>
-          <tbody id="kwTable"></tbody>
-        </table>
-      </div>
-    </div>
-    <!-- Top IP -->
-    <div class="col-lg-6">
-      <div class="glass p-3 h-100">
-        <div class="mb-2 fw-semibold small text-uppercase muted">🌐 Top IP</div>
-        <table class="table table-sm align-middle mb-0">
-          <thead><tr><th>#</th><th>IP</th><th class="text-end">Lượt</th></tr></thead>
-          <tbody id="ipTable"></tbody>
-        </table>
-      </div>
-    </div>
-  </div>
+    async function loadData(days) {
+      try {
+        const res = await fetch('/stats/data?days=' + days);
+        const d = await res.json();
 
-  <!-- Hoạt động gần đây -->
-  <div class="glass p-3 mt-4">
-    <div class="mb-2 fw-semibold small text-uppercase muted">🕒 Hoạt động gần đây</div>
-    <div class="table-responsive">
-      <table class="table table-sm align-middle mb-0">
-        <thead><tr><th>Thời gian</th><th>IP</th><th>Trang</th><th>Status</th><th>Từ khóa</th></tr></thead>
-        <tbody id="recentTable"></tbody>
-      </table>
-    </div>
-  </div>
-</div>
+        // KPI cards
+        document.getElementById('kpiUploads').textContent = formatNum(d.uploads ?? 0);
+        document.getElementById('kpiIps').textContent = formatNum(d.unique_ips ?? 0);
+        document.getElementById('kpiSuccess').textContent = (d.success_rate ?? 100) + '%';
+        document.getElementById('kpiErrors').textContent = d.error_count ?? 0;
+        const avg = d.avg_duration_ms ?? 0;
+        document.getElementById('kpiAvg').textContent = avg > 0 ? (avg < 1000 ? avg + 'ms' : (avg/1000).toFixed(2) + 's') : '–';
 
-<script>
-async function load() {
-  try {
-    const res = await fetch('/stats/data');
-    const d = await res.json();
-    document.getElementById('statTotal').textContent = d.total ?? 0;
-    document.getElementById('statToday').textContent = d.today ?? 0;
-    document.getElementById('statUploads').textContent = d.uploads ?? 0;
-    document.getElementById('statKeywords').textContent = d.keyword_count ?? 0;
-    document.getElementById('updatedAt').textContent = 'Cập nhật ' + new Date().toLocaleTimeString('vi-VN');
+        const rangeLabel = {1: 'Hôm nay', 7: '7 ngày gần nhất', 30: '30 ngày gần nhất', 90: '90 ngày gần nhất'}[days] || days + ' ngày';
+        document.getElementById('chartRangeLabel').textContent = rangeLabel;
 
-    // Charts
-    const hours = d.by_hour || {};
-    const labelsH = Object.keys(hours);
-    const valsH = labelsH.map(h => hours[h]);
-    renderChart('chartHour', 'bar', labelsH, valsH, '#5eead4');
+        // Line chart: by_day (last N days)
+        const byDay = d.by_day || {};
+        const labels = Object.keys(byDay).slice(-days);
+        const values = labels.map(k => byDay[k]);
+        renderLine(labels, values);
 
-    const days = d.by_day || {};
-    const labelsD = Object.keys(days);
-    const valsD = labelsD.map(x => days[x]);
-    renderChart('chartDay', 'line', labelsD, valsD, '#a78bfa');
+        // Bar chart: top keywords (horizontal)
+        const kws = (d.top_keywords || []).slice(0, 8);
+        renderBars(kws.map(k => truncate(k.keyword, 20)), kws.map(k => k.count));
 
-    // Keywords
-    const kws = d.top_keywords || [];
-    document.getElementById('kwList').innerHTML = kws.slice(0,8).map(k =>
-      `<span class="chip">${esc(k.keyword)} <b>${k.count}</b></span>`).join('') || '<span class="muted small">Chưa có dữ liệu</span>';
-    document.getElementById('kwTable').innerHTML = kws.length
-      ? kws.map((k,i) => `<tr><td class="muted">${i+1}</td><td>${esc(k.keyword)}</td><td class="text-end">${k.count}</td></tr>`).join('')
-      : '<tr><td colspan="3" class="text-center muted small">Chưa có dữ liệu</td></tr>';
+        // Table: recent
+        allRecords = (d.recent || []).slice().reverse();
+        renderTable(allRecords, '');
 
-    // Top IP
-    const ips = d.top_ips || [];
-    document.getElementById('ipTable').innerHTML = ips.length
-      ? ips.map((x,i) => `<tr><td class="muted">${i+1}</td><td>${esc(x.ip)}</td><td class="text-end">${x.count}</td></tr>`).join('')
-      : '<tr><td colspan="3" class="text-center muted small">Chưa có dữ liệu</td></tr>';
-
-    // Recent
-    const rec = d.recent || [];
-    document.getElementById('recentTable').innerHTML = rec.length
-      ? rec.slice().reverse().map(r => {
-          const st = r.status === 200 ? '<span class="status-ok">200</span>' : `<span class="status-err">${esc(String(r.status))}</span>`;
-          const kw = r.keywords ? `<span class="chip">${esc(String(r.keywords).replace(/\n/g, ', '))}</span>` : '<span class="muted">—</span>';
-          return `<tr><td class="muted small">${esc(r.ts || '')}</td><td class="small">${esc(r.ip || '')}</td><td><span class="badge text-bg-secondary">${esc(r.path || '')}</span></td><td>${st}</td><td>${kw}</td></tr>`;
-        }).join('')
-      : '<tr><td colspan="5" class="text-center muted small">Chưa có dữ liệu</td></tr>';
-  } catch (e) {
-    console.error(e);
-    document.getElementById('kwList').innerHTML = '<span class="status-err">Lỗi tải dữ liệu</span>';
-  }
-}
-
-function renderChart(id, type, labels, values, color) {
-  const ctx = document.getElementById(id);
-  if (!ctx) return;
-  new Chart(ctx, {
-    type,
-    data: { labels, datasets: [{ data: values, backgroundColor: color + '55', borderColor: color, borderWidth: type === 'line' ? 2 : 0, fill: type === 'line' }] },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      scales: { x: { ticks: { color: '#8b90a0', maxRotation: 0 }, grid: { color: 'rgba(255,255,255,.05)' } },
-               y: { beginAtZero: true, ticks: { color: '#8b90a0', precision: 0 }, grid: { color: 'rgba(255,255,255,.05)' } } }
+        // Auto refresh mỗi 30s
+        setTimeout(() => loadData(days), 30000);
+      } catch (e) {
+        console.error(e);
+        document.getElementById('logBody').innerHTML = '<tr><td colspan="7" class="px-5 py-6 text-center text-rose-500">Lỗi tải dữ liệu</td></tr>';
+      }
     }
-  });
-}
 
-function esc(s) { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; }
+    function renderLine(labels, values) {
+      const ctx = document.getElementById('trafficChart').getContext('2d');
+      if (chartTraffic) chartTraffic.destroy();
+      chartTraffic = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels || [],
+          datasets: [{
+            label: 'Lượt lọc file',
+            data: values || [],
+            borderColor: '#10b981',
+            backgroundColor: 'rgba(16, 185, 129, 0.08)',
+            fill: true,
+            tension: 0.35,
+            pointRadius: 4,
+            pointBackgroundColor: '#10b981'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { grid: { color: '#f1f5f9' }, beginAtZero: true, ticks: { font: { size: 11 }, precision: 0 } },
+            x: { grid: { display: false }, ticks: { font: { size: 11 }, maxRotation: 0 } }
+          }
+        }
+      });
+    }
 
-load();
-</script>
+    function renderBars(labels, values) {
+      const ctx = document.getElementById('keywordsChart').getContext('2d');
+      if (chartKeywords) chartKeywords.destroy();
+      chartKeywords = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels || [],
+          datasets: [{
+            data: values || [],
+            backgroundColor: '#3b82f6',
+            borderRadius: 6
+          }]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { color: '#f1f5f9' }, beginAtZero: true, ticks: { font: { size: 10 }, precision: 0 } },
+            y: { grid: { display: false }, ticks: { font: { size: 11 } } }
+          }
+        }
+      });
+    }
+
+    function renderTable(records, query) {
+      const q = query.trim().toLowerCase();
+      const filtered = q ? records.filter(r =>
+        (r.ip || '').toLowerCase().includes(q) ||
+        (r.keywords || '').toLowerCase().includes(q) ||
+        (r.filename || '').toLowerCase().includes(q)) : records;
+
+      const tbody = document.getElementById('logBody');
+      if (!filtered.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="px-5 py-6 text-center text-slate-400">Không có hoạt động nào</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = filtered.slice(0, 50).map(r => {
+        const ok = String(r.status) === '200';
+        const kw = r.keywords ? r.keywords.split(/[\n,]+/).filter(Boolean).map(k =>
+          `<span class="bg-slate-100 text-slate-800 px-2 py-0.5 rounded font-mono text-[11px] mr-1">${esc(k)}</span>`).join('')
+          : '<span class="text-slate-400">—</span>';
+        const file = r.filename ? `${esc(r.filename)}${r.file_size_mb ? ` <span class="text-slate-400">(${r.file_size_mb} MB)</span>` : ''}` : '<span class="text-slate-400">—</span>';
+        const mc = r.match_count ?? '—';
+        const dur = r.duration_ms != null ? (r.duration_ms < 1000 ? r.duration_ms + 'ms' : (r.duration_ms/1000).toFixed(1) + 's') : '—';
+        return `<tr class="hover:bg-slate-50/50 transition">
+          <td class="px-5 py-3.5 text-slate-500">${esc(fmtTime(r.ts))}</td>
+          <td class="px-5 py-3.5 font-mono text-slate-900">${esc(r.ip || '—')}</td>
+          <td class="px-5 py-3.5">${kw}</td>
+          <td class="px-5 py-3.5">${file}</td>
+          <td class="px-5 py-3.5">${mc}</td>
+          <td class="px-5 py-3.5 text-slate-500">${dur}</td>
+          <td class="px-5 py-3.5 text-right"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${ok ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}">${ok ? 'Thành công' : 'Lỗi'}</span></td>
+        </tr>`;
+      }).join('');
+    }
+
+    document.getElementById('searchInput').addEventListener('input', e => renderTable(allRecords, e.target.value));
+    document.getElementById('rangeSelect').addEventListener('change', e => loadData(parseInt(e.target.value, 10)));
+
+    function exportCSV() {
+      const rows = [['time','ip','keywords','filename','file_size_mb','match_count','duration_ms','status']];
+      allRecords.forEach(r => rows.push([r.ts || '', r.ip || '', (r.keywords||'').replace(/\n/g,'; '), r.filename || '', r.file_size_mb ?? '', r.match_count ?? '', r.duration_ms ?? '', r.status ?? '']));
+      const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+      a.download = 'report.csv';
+      a.click();
+    }
+
+    function scrollToSection(id) { document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }); }
+    function formatNum(n) { return n.toLocaleString('vi-VN'); }
+    function truncate(s, n) { s = String(s); return s.length > n ? s.slice(0, n) + '…' : s; }
+    function esc(s) { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; }
+    function fmtTime(ts) {
+      if (!ts) return '—';
+      const d = new Date(ts);
+      if (isNaN(d)) return ts;
+      return d.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+
+    loadData(7);
+  </script>
 </body>
 </html>
