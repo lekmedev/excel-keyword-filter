@@ -78,14 +78,21 @@ async def health():
 
 @app.get("/stats")
 async def stats_page():
-    """Trang thống kê sử dụng người dùng."""
-    data = stats.summarize(days=STATS_RETENTION_DAYS)
-    html = _render_stats_html(data)
-    return HTMLResponse(html)
+    """Trang thống kê sử dụng người dùng (static HTML, fetch /stats/data)."""
+    stats_file = FRONTEND_DIR / "stats.html"
+    if stats_file.is_file():
+        return FileResponse(stats_file)
+    return HTMLResponse("<h1>stats.html missing</h1>", status_code=404)
+
+
+@app.get("/stats/data")
+async def stats_data():
+    """JSON dữ liệu thống kê cho /stats."""
+    return stats.summarize(days=STATS_RETENTION_DAYS)
 
 
 @app.post("/process")
-async def process(file: UploadFile = File(...), keywords: str = Form(...)):
+async def process(request: Request, file: UploadFile = File(...), keywords: str = Form(...)):
     """Nhận file Excel + danh sách từ khóa, trả về link tải file kết quả."""
     # Validate định dạng file.
     filename = file.filename or ""
@@ -133,11 +140,37 @@ async def process(file: UploadFile = File(...), keywords: str = Form(...)):
     try:
         output_path, match_count = process_excel(input_path, keywords)
     except NoMatchError as exc:
+        stats.record(
+            ip=_client_ip(request),
+            method="POST",
+            path="/process",
+            status=200,
+            ua="",
+            extra={"keywords": keywords},
+        )
         shutil.rmtree(job_dir, ignore_errors=True)
         return {"status": "no_match", "message": str(exc), "download_url": None}
     except ExcelProcessingError as exc:
+        stats.record(
+            ip=_client_ip(request),
+            method="POST",
+            path="/process",
+            status=400,
+            ua="",
+            extra={"keywords": keywords},
+        )
         shutil.rmtree(job_dir, ignore_errors=True)
         raise HTTPException(status_code=400, detail=str(exc))
+
+    # Log upload thành công kèm keywords + match_count.
+    stats.record(
+        ip=_client_ip(request),
+        method="POST",
+        path="/process",
+        status=200,
+        ua=request.headers.get("user-agent", ""),
+        extra={"keywords": keywords, "match_count": match_count},
+    )
 
     return {
         "status": "ok",
@@ -174,8 +207,17 @@ FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
 
 
+def _client_ip(request: Request) -> str:
+    """IP thật: Cloudflare set CF-Connecting-IP; fallback X-Forwarded-For; rồi client host."""
+    return (
+        request.headers.get("cf-connecting-ip")
+        or (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+        or (request.client.host if request.client else "")
+    )
+
+
 def _render_stats_html(data: dict) -> str:
-    """Render trang /stats đơn giản (Bootstrap) từ dữ liệu tổng hợp."""
+    """(Không còn dùng — /stats trả static stats.html; giữ để tương thích test cũ.)"""
     top_rows = "".join(
         f"<tr><td>{i+1}</td><td>{ip}</td><td class='text-end'>{c}</td></tr>"
         for i, (ip, c) in enumerate(
@@ -239,10 +281,10 @@ def _render_stats_html(data: dict) -> str:
 
 @app.middleware("http")
 async def log_access(request: Request, call_next):
-    """Ghi log truy cập (không log /stats, /health, static assets)."""
+    """Ghi log truy cập (không log /stats, /health, static assets, /process — /process tự log trong endpoint)."""
     path = request.url.path
     is_static = path.startswith(("/style.css", "/script.js")) or path in ("/favicon.ico",)
-    is_ignored = path in ("/stats", "/health") or is_static
+    is_ignored = path in ("/stats", "/stats/data", "/health", "/process") or is_static
     if is_ignored:
         return await call_next(request)
 
@@ -251,13 +293,8 @@ async def log_access(request: Request, call_next):
     if path in ("/", "/index.html", "/style.css", "/script.js") or path.endswith((".css", ".js")):
         response.headers["Cache-Control"] = "no-cache, max-age=0"
     # IP thật: Cloudflare set CF-Connecting-IP; fallback X-Forwarded-For; rồi client host.
-    ip = (
-        request.headers.get("cf-connecting-ip")
-        or (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
-        or request.client.host if request.client else ""
-    )
     stats.record(
-        ip=ip,
+        ip=_client_ip(request),
         method=request.method,
         path=path,
         status=response.status_code,

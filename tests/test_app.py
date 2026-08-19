@@ -493,18 +493,49 @@ def test_stats_middleware_logs_access(client, tmp_path: Path, monkeypatch):
 
 
 def test_stats_endpoint_renders(client, tmp_path: Path, monkeypatch):
-    """GET /stats trả HTML có số liệu."""
+    """GET /stats trả HTML (static file); GET /stats/data trả JSON có số liệu."""
     from backend import main as main_mod
     from backend.stats import Stats
 
     log_dir = tmp_path / "stats2"
     test_stats = Stats(log_dir, retention_days=90)
-    test_stats.record(ip="1.1.1.1", method="POST", path="/process", status=200)
+    test_stats.record(ip="1.1.1.1", method="POST", path="/process", status=200, extra={"keywords": "keyboard"})
     test_stats.record(ip="1.1.1.1", method="GET", path="/", status=200)
     monkeypatch.setattr(main_mod, "stats", test_stats)
 
+    # /stats trả HTML trang (file tĩnh tồn tại trong frontend/)
     r = client.get("/stats")
     assert r.status_code == 200
-    assert "Tổng requests" in r.text
-    assert "2" in r.text
-    assert "1.1.1.1" in r.text
+    assert "Thống kê sử dụng" in r.text
+
+    # /stats/data trả JSON tổng hợp
+    r2 = client.get("/stats/data")
+    assert r2.status_code == 200
+    data = r2.json()
+    assert data["total"] == 2
+    assert data["uploads"] == 1
+    assert data["top_keywords"][0]["keyword"] == "keyboard"
+    assert data["top_keywords"][0]["count"] == 1
+    assert data["keyword_count"] == 1
+
+
+def test_stats_process_logs_keywords(client, tmp_path: Path, monkeypatch):
+    """POST /process ghi log kèm keywords (từ endpoint, không qua middleware)."""
+    from backend import main as main_mod
+    from backend.stats import Stats
+
+    log_dir = tmp_path / "stats3"
+    test_stats = Stats(log_dir, retention_days=90)
+    monkeypatch.setattr(main_mod, "stats", test_stats)
+
+    # Upload CSV đơn giản
+    csv_bytes = b"A,B,C,D,E,F,G,H,I,J,K,L,M,N,O\nx,b,05-Thg 01-26 08:43 SA,d,e,f,g,h,i,j,k,l,m,Logitech keyboard,o\n"
+    r = client.post("/process", files={"file": ("t.csv", csv_bytes, "text/csv")}, data={"keywords": "keyboard\nmouse"})
+    assert r.status_code == 200
+
+    recs = test_stats.read()
+    process_recs = [x for x in recs if x["path"] == "/process"]
+    assert len(process_recs) == 1
+    assert "keyboard" in process_recs[0]["keywords"]
+    assert "mouse" in process_recs[0]["keywords"]
+    assert "match_count" in process_recs[0]

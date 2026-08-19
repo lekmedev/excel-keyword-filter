@@ -9,6 +9,7 @@ Không chứa dữ liệu file upload, không chứa nội dung CSV.
 
 import json
 import os
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -95,7 +96,7 @@ class Stats:
 
     # ------------------------------------------------------------------
     def summarize(self, days: int = 90) -> dict:
-        """Tổng hợp: tổng requests, hôm nay, top IP, số upload, status."""
+        """Tổng hợp: tổng requests, hôm nay, top IP, số upload, keywords, recent."""
         records = self.read()
         now = datetime.now()
         today = now.date().isoformat()
@@ -104,10 +105,11 @@ class Stats:
         total = 0
         today_count = 0
         uploads = 0
-        no_match = 0
         ip_counts: dict[str, int] = {}
         hour_counts: dict[int, int] = {}
         day_counts: dict[str, int] = {}
+        keyword_counts: dict[str, int] = {}
+        recent: list[dict] = []
 
         for r in records:
             try:
@@ -128,20 +130,37 @@ class Stats:
             hour_counts[hour] = hour_counts.get(hour, 0) + 1
             if r.get("method") == "POST" and r.get("path", "").startswith("/process"):
                 uploads += 1
-                if r.get("status") == 200:
-                    # status 200 = có kết quả (kể cả no_match cũng 200)
-                    no_match += 0  # không phân biệt được nếu không có extra
-            if r.get("path", "").startswith("/process") and r.get("status") == 200:
-                no_match += 0
+                # Đếm từ khóa user nhập (nếu có) — tách theo \n hoặc ,
+                kws = r.get("keywords", "")
+                if kws:
+                    for kw in re.split(r"[\n,]+", str(kws)):
+                        kw = kw.strip()
+                        if kw:
+                            keyword_counts[kw] = keyword_counts.get(kw, 0) + 1
+            # 20 record gần nhất (mọi loại request, trừ /stats /health static)
+            recent.append(
+                {
+                    "ts": r.get("ts", ""),
+                    "ip": ip,
+                    "method": r.get("method", ""),
+                    "path": r.get("path", ""),
+                    "status": r.get("status", ""),
+                    "keywords": r.get("keywords", ""),
+                }
+            )
 
         top_ips = sorted(ip_counts.items(), key=lambda kv: kv[1], reverse=True)[:10]
+        top_keywords = sorted(keyword_counts.items(), key=lambda kv: kv[1], reverse=True)[:20]
 
         return {
             "total": total,
             "today": today_count,
             "uploads": uploads,
             "top_ips": [{"ip": ip, "count": c} for ip, c in top_ips],
+            "top_keywords": [{"keyword": kw, "count": c} for kw, c in top_keywords],
+            "keyword_count": len(keyword_counts),
             "by_hour": {str(h): hour_counts.get(h, 0) for h in range(24)},
             "by_day": dict(sorted(day_counts.items())),
+            "recent": recent[-20:],
             "retention_days": self.retention_days,
         }
