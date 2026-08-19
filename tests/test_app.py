@@ -468,28 +468,44 @@ def test_stats_cleanup(tmp_path: Path):
 
 
 def test_stats_middleware_logs_access(client, tmp_path: Path, monkeypatch):
-    """Middleware ghi log khi truy cập /; /stats không bị log; IP từ CF-Connecting-IP."""
+    """Chỉ hành động dùng thật mới được log: GET / thì KHÔNG, download thì CÓ.
+    IP lấy từ CF-Connecting-IP."""
     from backend import main as main_mod
-    from pathlib import Path as P
+    from backend.stats import Stats
 
     log_dir = tmp_path / "stats"
-    test_stats = __import__("backend.stats", fromlist=["Stats"]).Stats(log_dir, retention_days=90)
+    test_stats = Stats(log_dir, retention_days=90)
     monkeypatch.setattr(main_mod, "stats", test_stats)
-    monkeypatch.setattr(main_mod, "STATS_DIR", log_dir)
 
-    # GET / với header CF giả
+    # GET / (chỉ mở trang) — KHÔNG được log
     r = client.get("/", headers={"CF-Connecting-IP": "9.9.9.9"})
     assert r.status_code == 200
-
     recs = test_stats.read()
-    assert len(recs) >= 1
-    assert recs[0]["ip"] == "9.9.9.9"
-    assert recs[0]["path"] == "/"
+    assert len(recs) == 0, "Mở trang chủ không được tính là lượt dùng"
 
-    # /stats không bị log
+    # /stats cũng không log
     client.get("/stats")
-    recs2 = test_stats.read()
-    assert all(r["path"] != "/stats" for r in recs2)
+    assert len(test_stats.read()) == 0
+
+    # Upload + download — log cả 2
+    csv_bytes = b"A,B,C,D,E,F,G,H,I,J,K,L,M,N,O\nx,b,05-Thg 01-26 08:43 SA,d,e,f,g,h,i,j,k,l,m,Logitech keyboard,o\n"
+    r2 = client.post(
+        "/process",
+        files={"file": ("t.csv", csv_bytes, "text/csv")},
+        data={"keywords": "keyboard"},
+        headers={"CF-Connecting-IP": "9.9.9.9"},
+    )
+    assert r2.status_code == 200
+    dl_url = r2.json()["download_url"]
+    r3 = client.get(dl_url, headers={"CF-Connecting-IP": "9.9.9.9"})
+    assert r3.status_code == 200
+
+    recs3 = test_stats.read()
+    paths = [x["path"] for x in recs3]
+    assert "/process" in paths
+    assert any(p.startswith("/download/") for p in paths)
+    # Mọi record có IP đúng từ CF header
+    assert all(x["ip"] == "9.9.9.9" for x in recs3)
 
 
 def test_stats_endpoint_renders(client, tmp_path: Path, monkeypatch):

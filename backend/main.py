@@ -281,23 +281,20 @@ def _render_stats_html(data: dict) -> str:
 
 @app.middleware("http")
 async def log_access(request: Request, call_next):
-    """Ghi log truy cập (không log /stats, /health, static assets, /process — /process tự log trong endpoint)."""
+    """Ghi log chỉ cho hành động SỬ DỤNG thật (download result).
+    Upload (/process) tự log trong endpoint. Chỉ mở trang chủ KHÔNG được đếm."""
     path = request.url.path
-    is_static = path.startswith(("/style.css", "/script.js")) or path in ("/favicon.ico",)
-    is_ignored = path in ("/stats", "/stats/data", "/health", "/process") or is_static
-    if is_ignored:
-        return await call_next(request)
-
     response = await call_next(request)
     # Giữ cache-busting: HTML/CSS/JS không bao giờ cache lâu (CF + browser).
     if path in ("/", "/index.html", "/style.css", "/script.js") or path.endswith((".css", ".js")):
         response.headers["Cache-Control"] = "no-cache, max-age=0"
-    # IP thật: Cloudflare set CF-Connecting-IP; fallback X-Forwarded-For; rồi client host.
-    stats.record(
-        ip=_client_ip(request),
-        method=request.method,
-        path=path,
-        status=response.status_code,
-        ua=request.headers.get("user-agent", ""),
-    )
+    # Chỉ log download (hành động dùng thật, xảy ra sau upload).
+    if path.startswith("/download/"):
+        stats.record(
+            ip=_client_ip(request),
+            method=request.method,
+            path=path,
+            status=response.status_code,
+            ua=request.headers.get("user-agent", ""),
+        )
     return response
