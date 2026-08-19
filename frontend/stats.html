@@ -18,6 +18,7 @@
   .chip { display:inline-block; padding: .18rem .6rem; margin: .12rem; border-radius: 999px; background: rgba(94,234,212,.12); color: #5eead4; font-size: .8rem; }
   .status-ok { color: #4ade80; } .status-err { color: #f87171; }
   .muted { color: #6b7280; }
+  .chart-box { position: relative; height: 240px; width: 100%; }
 </style>
 </head>
 <body>
@@ -63,13 +64,13 @@
     <div class="col-lg-6">
       <div class="glass p-3 h-100">
         <div class="mb-2 fw-semibold small text-uppercase muted">Request theo giờ</div>
-        <canvas id="chartHour" height="220"></canvas>
+        <div class="chart-box"><canvas id="chartHour"></canvas></div>
       </div>
     </div>
     <div class="col-lg-6">
       <div class="glass p-3 h-100">
         <div class="mb-2 fw-semibold small text-uppercase muted">Request theo ngày</div>
-        <canvas id="chartDay" height="220"></canvas>
+        <div class="chart-box"><canvas id="chartDay"></canvas></div>
       </div>
     </div>
   </div>
@@ -169,7 +170,6 @@ function renderChart(id, type, labels, values, color) {
     data: { labels, datasets: [{ data: values, backgroundColor: color + '55', borderColor: color, borderWidth: type === 'line' ? 2 : 0, fill: type === 'line' }] },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
       scales: { x: { ticks: { color: '#8b90a0', maxRotation: 0 }, grid: { color: 'rgba(255,255,255,.05)' } },
                y: { beginAtZero: true, ticks: { color: '#8b90a0', precision: 0 }, grid: { color: 'rgba(255,255,255,.05)' } } }
     }
